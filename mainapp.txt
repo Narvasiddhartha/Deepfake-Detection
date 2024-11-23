@@ -1,0 +1,91 @@
+from flask import Flask, request, jsonify, render_template
+import pickle
+import os
+from werkzeug.utils import secure_filename
+from PIL import Image
+
+# Define the Meso4 class
+class Meso4:
+    def __init__(self):
+        self.description = "This is a placeholder for the Meso4 model."
+    
+    def predict(self, x):
+        # Dummy logic: Replace this with the actual prediction logic
+        # Here, we return "Fake" if the sum of the pixel values is odd and "Real" otherwise
+        prediction_score = sum(sum(pixel) for pixel in x) % 2
+        return "Fake" if prediction_score else "Real"
+
+# Initialize Flask app
+app = Flask(__name__)
+
+# Directory for uploaded images
+UPLOAD_FOLDER = 'uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# Load the model
+try:
+    with open('meso4_model.pkl', 'rb') as f:
+        model = pickle.load(f)
+except Exception as e:
+    print(f"Error loading model: {e}")
+    model = None
+
+# Define the home route to render the HTML page
+@app.route('/')
+def index():
+    return '''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Image Upload</title>
+    </head>
+    <body>
+        <h2>Upload an Image for Prediction</h2>
+        <form action="/predict" method="POST" enctype="multipart/form-data">
+            <input type="file" name="image" accept="image/*" required>
+            <br><br>
+            <button type="submit">Submit</button>
+        </form>
+    </body>
+    </html>
+    '''
+
+# Define the prediction route
+@app.route('/predict', methods=['POST'])
+def predict():
+    if model is None:
+        return jsonify({"error": "Model is not loaded"}), 500
+    
+    if 'image' not in request.files:
+        return jsonify({"error": "No image file provided"}), 400
+
+    image_file = request.files['image']
+    if image_file.filename == '':
+        return jsonify({"error": "No selected image"}), 400
+
+    # Save the uploaded image
+    filename = secure_filename(image_file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    image_file.save(filepath)
+
+    try:
+        # Preprocess the image (example: resizing)
+        img = Image.open(filepath)
+        img = img.resize((224, 224))  # Resize to match model input
+        img = img.convert('RGB')  # Ensure the image is in RGB format
+        
+        # Convert image to an array (adjust preprocessing as per your model's requirements)
+        img_array = list(img.getdata())  # Example array extraction
+
+        # Make prediction using the loaded model
+        prediction = model.predict(img_array)
+        return f"<h3>Prediction: {prediction}</h3><br><a href='/'>Go back</a>"
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Run the Flask app
+if __name__ == '__main__':
+    app.run(debug=True)
